@@ -1,0 +1,38 @@
+app.js:1 Obsidian Developer Console
+plugin:snippetbase:19 [SnippetBase] License verification result: Object
+plugin:bases-matrix-view:8 🔍 DRAG/DROP DEBUG:
+plugin:bases-matrix-view:8   Properties: note.category (row), note.priority (col)
+plugin:bases-matrix-view:8   Bucket types: categorical (row), categorical (col)
+plugin:bases-matrix-view:8   Checks: multiValue=false, rowReversible=true, colReversible=true
+plugin:bases-matrix-view:8   Result: writebackAllowed=false
+plugin:bases-matrix-view:8   Full specs: {rowSpec: {…}, colSpec: {…}}
+plugin:bases-matrix-view:8 🎯 FINAL DRAG/DROP CHECK:
+plugin:bases-matrix-view:8   writebackAllowed: false
+plugin:bases-matrix-view:8   enableDragSetting: true
+plugin:bases-matrix-view:8   rowsIsNote: true (note.category)
+plugin:bases-matrix-view:8   colsIsNote: true (note.priority)
+plugin:bases-matrix-view:8   FINAL RESULT: writebackAllowedFinal=false
+plugin:bases-matrix-view:8 🔍 DRAG/DROP DEBUG:
+plugin:bases-matrix-view:8   Properties: note.category (row), note.priority (col)
+plugin:bases-matrix-view:8   Bucket types: categorical (row), categorical (col)
+plugin:bases-matrix-view:8   Checks: multiValue=false, rowReversible=true, colReversible=true
+plugin:bases-matrix-view:8   Result: writebackAllowed=false
+plugin:bases-matrix-view:8   Full specs: {rowSpec: {…}, colSpec: {…}}
+plugin:bases-matrix-view:8 🎯 FINAL DRAG/DROP CHECK:
+plugin:bases-matrix-view:8   writebackAllowed: false
+plugin:bases-matrix-view:8   enableDragSetting: true
+plugin:bases-matrix-view:8   rowsIsNote: true (note.category)
+plugin:bases-matrix-view:8   colsIsNote: true (note.priority)
+plugin:bases-matrix-view:8   FINAL RESULT: writebackAllowedFinal=false
+plugin:bases-matrix-view:8 🔍 DRAG/DROP DEBUG:
+plugin:bases-matrix-view:8   Properties: note.category (row), note.priority (col)
+plugin:bases-matrix-view:8   Bucket types: categorical (row), categorical (col)
+plugin:bases-matrix-view:8   Checks: multiValue=false, rowReversible=true, colReversible=true
+plugin:bases-matrix-view:8   Result: writebackAllowed=false
+plugin:bases-matrix-view:8   Full specs: {rowSpec: {…}, colSpec: {…}}
+plugin:bases-matrix-view:8 🎯 FINAL DRAG/DROP CHECK:
+plugin:bases-matrix-view:8   writebackAllowed: false
+plugin:bases-matrix-view:8   enableDragSetting: true
+plugin:bases-matrix-view:8   rowsIsNote: true (note.category)
+plugin:bases-matrix-view:8   colsIsNote: true (note.priority)
+plugin:bases-matrix-view:8   FINAL RESULT: writebackAllowedFinal=false

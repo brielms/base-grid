@@ -1,11 +1,9 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
-	"version": "1.0.0",
-	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"id": "bases-matrix-view",
+	"name": "Bases Matrix View",
+	"version": "0.0.1",
+	"minAppVersion": "1.10.0",
+	"description": "A Matrix view for Bases that displays data in a 2D grid with drag-and-drop functionality.",
+	"author": "Obsidian Community",
 	"isDesktopOnly": false
 }
