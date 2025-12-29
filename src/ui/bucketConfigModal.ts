@@ -16,8 +16,8 @@ function parseRanges(text: string): NumberRange[] {
     const min = minS ? Number(minS) : undefined;
     const max = maxS ? Number(maxS) : undefined;
 
-    if (minS && !Number.isFinite(min!)) throw new Error(`Bad min in: ${line}`);
-    if (maxS && !Number.isFinite(max!)) throw new Error(`Bad max in: ${line}`);
+    if (minS && !Number.isFinite(min)) throw new Error(`Bad min in: ${line}`);
+    if (maxS && !Number.isFinite(max)) throw new Error(`Bad max in: ${line}`);
 
     out.push({ label, min, max });
   }
@@ -44,11 +44,11 @@ export class BucketConfigModal extends Modal {
     let type: AxisBucketSpec["type"] = this.spec.type;
 
     const rangesArea = el.createEl("textarea");
-    rangesArea.style.width = "100%";
-    rangesArea.style.minHeight = "160px";
-    rangesArea.style.display = "none";
+    rangesArea.style.width = "100%";  
+    rangesArea.style.minHeight = "160px";  
+    rangesArea.style.display = "none";  
 
-    const quantilesSetting = new Setting(el).setName("Quantiles (k)").setDesc("Only for Number: Quantiles");
+    const quantilesSetting = new Setting(el).setName("Quantiles (k)").setDesc("Only for numbers: quantiles");
     let quantilesK = this.spec.type === "numberQuantiles" ? this.spec.k : 4;
     quantilesSetting.addText((t) => {
       t.setValue(String(quantilesK));
@@ -57,25 +57,25 @@ export class BucketConfigModal extends Modal {
         if (Number.isFinite(n)) quantilesK = Math.max(2, Math.min(10, Math.floor(n)));
       });
     });
-    quantilesSetting.settingEl.style.display = "none";
+    quantilesSetting.settingEl.style.display = "none";  
 
     if (this.spec.type === "numberRanges") {
       rangesArea.value = serializeRanges(this.spec.ranges);
-      rangesArea.style.display = "block";
+      rangesArea.style.display = "block";  
     }
 
     new Setting(el)
       .setName("Bucket type")
       .addDropdown((d) => {
         d.addOption("categorical", "Categorical (exact values)");
-        d.addOption("dateRelative", "Date: Relative buckets");
-        d.addOption("numberRanges", "Number: Ranges");
-        d.addOption("numberQuantiles", "Number: Quantiles");
+        d.addOption("dateRelative", "Date: relative buckets");
+        d.addOption("numberRanges", "Number: ranges");
+        d.addOption("numberQuantiles", "Number: quantiles");
         d.setValue(type);
         d.onChange((v) => {
-          type = v as any;
-          rangesArea.style.display = type === "numberRanges" ? "block" : "none";
-          quantilesSetting.settingEl.style.display = type === "numberQuantiles" ? "flex" : "none";
+          type = v as unknown;
+          rangesArea.style.display = type === "numberRanges" ? "block" : "none";  
+          quantilesSetting.settingEl.style.display = type === "numberQuantiles" ? "flex" : "none";  
         });
       });
 

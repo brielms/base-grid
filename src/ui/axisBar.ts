@@ -1,10 +1,12 @@
-import { App, Menu, Notice } from "obsidian";
+import { App, Menu } from "obsidian";
 import type { BasesPropertyId, BasesViewConfig } from "obsidian";
 import type { AxisBucketSpec } from "../bases/bucketSpec";
 import type { MultiValueMode } from "../bases/multiValue";
 import { BucketConfigModal } from "./bucketConfigModal";
 import { PropertyPickerModal } from "./propertyPickerModal";
+import { CardFieldsTemplateEditor } from "./cardFieldsTemplateEditor";
 import { TextPromptModal } from "./textPromptModal";
+import { parseCommaList } from "../bases/cardConfig";
 import { setAlias, setBucketSpec } from "../bases/axisState";
 
 function propLabel(propId: BasesPropertyId | null): string {
@@ -41,12 +43,19 @@ export function renderAxisBar(args: {
   colsMultiMode: MultiValueMode;
 
   availableNoteProps: string[];
+  cardFields: string[];
+  sampleEntry: unknown;
+
+  heatmapMode: string;
+  maxCellCount: number;
 
   onPickRowsProp: (propName: string) => void;
   onPickColsProp: (propName: string) => void;
 
   onPickRowsMultiMode: (mode: MultiValueMode) => void;
   onPickColsMultiMode: (mode: MultiValueMode) => void;
+
+  onPickCardFields: (fields: string[]) => void;
 
   dragStatusText: string;
 
@@ -57,8 +66,10 @@ export function renderAxisBar(args: {
     rowsProp, colsProp,
     rowSpec, colSpec,
     rowsMultiMode, colsMultiMode,
+    availableNoteProps, cardFields, sampleEntry,
+    heatmapMode, maxCellCount,
     dragStatusText,
-    onRerender,
+    onRerender, onPickCardFields,
   } = args;
 
   containerEl.empty();
@@ -66,7 +77,6 @@ export function renderAxisBar(args: {
   const bar = containerEl.createDiv({ cls: "bmv-axisbar" });
 
   const left = bar.createDiv({ cls: "bmv-axisbar-left" });
-  const right = bar.createDiv({ cls: "bmv-axisbar-right" });
 
   // Rows group
   const rowsGroup = left.createDiv({ cls: "bmv-axisgroup" });
@@ -132,7 +142,59 @@ export function renderAxisBar(args: {
     menu.showAtMouseEvent(window.event as MouseEvent);
   };
 
+  // Display options section
+  const displayGroup = left.createDiv({ cls: "bmv-axisgroup" });
+  displayGroup.createDiv({ cls: "bmv-axislabel", text: "Display" });
+
+  const cardFieldsChip = displayGroup.createEl("button", {
+    cls: "bmv-chip",
+    text: cardFields.length > 0 ? `${cardFields.length} fields` : "Card fields"
+  });
+  cardFieldsChip.onclick = () => {
+    new CardFieldsTemplateEditor(app, {
+      mode: "cards",
+      items: availableNoteProps,
+      current: cardFields,
+      sampleEntry: sampleEntry,
+      onSave: (selectedFields) => {
+        onPickCardFields(selectedFields);
+        onRerender();
+      },
+    }).open();
+  };
+
+  const compactFieldsChip = displayGroup.createEl("button", {
+    cls: "bmv-chip",
+    text: "Compact..."
+  });
+  compactFieldsChip.onclick = () => {
+    // Get current compact fields from config
+    const currentCompactFields = parseCommaList((config.get("compactFields") as string) ?? "");
+
+    new CardFieldsTemplateEditor(app, {
+      mode: "compact",
+      items: availableNoteProps,
+      current: currentCompactFields,
+      sampleEntry: sampleEntry,
+      onSave: (selectedFields) => {
+        config.set("compactFields", selectedFields.join(","));
+        onRerender();
+      },
+    }).open();
+  };
+
   // Right side drag status
+  const right = bar.createDiv({ cls: "bmv-axisbar-right" });
+
+  // Heatmap legend (only if heatmap is enabled)
+  if (heatmapMode !== "off") {
+    const legend = right.createDiv({ cls: "bmv-heatmap-legend" });
+    legend.createSpan({ text: `Heatmap: 0 → ${maxCellCount}`, cls: "bmv-heatmap-text" });
+
+    // Tiny gradient swatch
+    legend.createDiv({ cls: "bmv-heatmap-swatch" });
+  }
+
   right.createDiv({ cls: "bmv-dragstatus", text: dragStatusText });
 
   // Optional: right-click on axis labels for quick alias rename (nice)

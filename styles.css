@@ -225,6 +225,270 @@
   outline: 2px solid var(--interactive-accent);
 }
 
+/* Card fields picker modal */
+.bmv-card-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+
+.bmv-card-field-row:hover {
+  border-color: var(--interactive-accent);
+}
+
+.bmv-card-field-row input[type="checkbox"] {
+  margin: 0;
+}
+
+.bmv-card-field-label {
+  flex: 1;
+  cursor: pointer;
+}
+
+.bmv-modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* Card Fields Template Editor */
+.bmv-template-editor {
+  display: flex;
+  gap: 20px;
+  min-height: 500px;
+}
+
+.bmv-template-left,
+.bmv-template-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.bmv-template-section-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text-normal);
+}
+
+.bmv-available-fields {
+  flex: 1;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px;
+  overflow-y: auto;
+  max-height: 300px;
+}
+
+.bmv-available-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  border-radius: 4px;
+  background: var(--background-secondary);
+}
+
+.bmv-available-field:hover {
+  background: var(--background-modifier-hover);
+}
+
+.bmv-add-btn {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.bmv-add-btn:hover {
+  background: var(--interactive-accent-hover);
+}
+
+.bmv-selected-section,
+.bmv-preview-section {
+  margin-bottom: 20px;
+}
+
+.bmv-selected-fields {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px;
+  min-height: 120px;
+  background: var(--background-secondary);
+}
+
+.bmv-selected-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  border-radius: 4px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  cursor: move;
+  user-select: none;
+}
+
+.bmv-selected-field:hover {
+  background: var(--background-modifier-hover);
+}
+
+.bmv-selected-field.bmv-dragging {
+  opacity: 0.5;
+  transform: rotate(5deg);
+}
+
+.bmv-selected-field.bmv-drop-above::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--interactive-accent);
+}
+
+.bmv-selected-field.bmv-drop-below::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--interactive-accent);
+}
+
+.bmv-drag-handle {
+  cursor: grab;
+  color: var(--text-muted);
+  font-size: 10px;
+  user-select: none;
+  min-width: 12px;
+}
+
+.bmv-selected-field-name {
+  flex: 1;
+}
+
+.bmv-remove-btn {
+  background: var(--text-error);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.bmv-remove-btn:hover {
+  background: var(--text-error-hover);
+}
+
+.bmv-card-preview {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 12px;
+  background: var(--background-secondary);
+  min-height: 100px;
+}
+
+.bmv-preview-title {
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: var(--text-normal);
+}
+
+.bmv-preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.bmv-preview-pill {
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  border-radius: 8px;
+  padding: 1px 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.bmv-preview-subtitle {
+  color: var(--text-muted);
+  font-size: 11px;
+  opacity: 0.75;
+  margin-top: 4px;
+}
+
+.bmv-preview-empty,
+.bmv-preview-unavailable {
+  color: var(--text-muted);
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+}
+
+/* Heatmap overlay */
+.bmv-cell {
+  position: relative;
+}
+
+.bmv-cell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--interactive-accent);
+  opacity: calc(var(--bmv-hm, 0) * var(--bmv-hm-strength, 0.35));
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* Heatmap legend */
+.bmv-heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.bmv-heatmap-text {
+  white-space: nowrap;
+}
+
+.bmv-heatmap-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: linear-gradient(to right, transparent, var(--interactive-accent));
+  border: 1px solid var(--background-modifier-border);
+}
+
 .bmv-status {
   margin-bottom: 8px;
   padding: 6px 8px;
@@ -233,4 +497,57 @@
   background: var(--background-secondary);
   font-size: 12px;
   opacity: 0.9;
+}
+
+/* Cell summary chips */
+.bmv-cell-top {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
+.bmv-cell-chips {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.bmv-chip-mini {
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  border-radius: 12px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* Card title and meta */
+.bmv-card-title {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.bmv-card-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.75;
+  margin-bottom: 4px;
+}
+
+.bmv-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.bmv-pill {
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  border-radius: 8px;
+  padding: 1px 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
 }

@@ -10,7 +10,7 @@ import {
 import { EMPTY_KEY } from "../bases/valueCodec";
 import type { MultiValueMode } from "../bases/multiValue";
 
-function toList(v: any): string[] {
+function toList(v: unknown): string[] {
   if (Array.isArray(v)) return v.map(String).filter(Boolean);
   if (typeof v === "string" && v.trim().length) return [v.trim()];
   return [];
@@ -21,7 +21,7 @@ function dedupe(a: string[]): string[] {
 }
 
 function writeAxisMove(
-  fm: any,
+  fm: unknown,
   propName: string,
   fromKey: string,
   toKey: string,

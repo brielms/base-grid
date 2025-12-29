@@ -1,6 +1,6 @@
 import { moment, type Value } from "obsidian";
 import { EMPTY_KEY, valueToBucketKey } from "./valueCodec";
-import type { AxisBucketSpec, NumberRange } from "./bucketSpec";
+import type { AxisBucketSpec } from "./bucketSpec";
 
 export const INVALID_KEY = "__INVALID__";
 
@@ -88,7 +88,7 @@ export function computeQuantileBuckets(values: number[], k: number): { edges: nu
   for (let i = 1; i < k; i++) {
     const idx = Math.floor((i * (n - 1)) / k);
     if (idx >= 0 && idx < n) {
-      edges.push(clean[idx]!);
+      edges.push(clean[idx]);
     }
   }
 
@@ -101,7 +101,7 @@ export function computeQuantileBuckets(values: number[], k: number): { edges: nu
 export function quantileLabelFor(n: number, edges: number[]): string {
   // edges length = k-1
   for (let i = 0; i < edges.length; i++) {
-    if (n <= edges[i]!) return `Q${i + 1}`;
+    if (n <= edges[i]) return `Q${i + 1}`;
   }
   return `Q${edges.length + 1}`;
 }

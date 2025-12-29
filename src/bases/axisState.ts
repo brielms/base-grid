@@ -21,7 +21,7 @@ function keyFor(axis: AxisId): string {
 }
 
 export function getAxisState(config: BasesViewConfig, axis: AxisId): AxisStateV1 {
-  const raw = config.get(keyFor(axis)) as unknown;
+  const raw = config.get(keyFor(axis));
 
   // We store objects directly via config.set(); but tolerate JSON strings if needed.
   if (raw && typeof raw === "object") {
@@ -30,7 +30,7 @@ export function getAxisState(config: BasesViewConfig, axis: AxisId): AxisStateV1
       v: 1,
       order: o.order ?? [],
       aliases: o.aliases ?? {},
-      bucketSpec: (o.bucketSpec as AxisBucketSpec) ?? defaultBucketSpec(),
+      bucketSpec: (o.bucketSpec) ?? defaultBucketSpec(),
     };
   }
   if (typeof raw === "string" && raw.trim().length > 0) {
@@ -40,7 +40,7 @@ export function getAxisState(config: BasesViewConfig, axis: AxisId): AxisStateV1
         v: 1,
         order: o.order ?? [],
         aliases: o.aliases ?? {},
-        bucketSpec: (o.bucketSpec as AxisBucketSpec) ?? defaultBucketSpec(),
+        bucketSpec: (o.bucketSpec) ?? defaultBucketSpec(),
       };
     } catch {
       // ignore

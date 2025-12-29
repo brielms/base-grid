@@ -9,7 +9,7 @@ function uniq(keys: string[]): string[] {
 
 function listElements(v: ListValue): Value[] {
   // Bases ListValue usually has .values: Value[]; fall back to empty array safely.
-  const anyV = v as any;
+  const anyV = v as unknown;
   const arr = anyV.values;
   return Array.isArray(arr) ? (arr as Value[]) : [];
 }
@@ -32,10 +32,10 @@ export function bucketKeysForValue(v: Value | null, mode: MultiValueMode): strin
     const keys = uniq(elems.map((e) => valueToBucketKey(e)).filter((k) => k !== EMPTY_KEY));
 
     if (mode === "explode") return keys.length > 0 ? keys : [EMPTY_KEY];
-    if (mode === "primary") return keys.length > 0 ? [keys[0]!] : [EMPTY_KEY];
+    if (mode === "primary") return keys.length > 0 ? [keys[0]] : [EMPTY_KEY];
 
     // disallow
-    return [valueToBucketKey(v as any)];
+    return [valueToBucketKey(v as unknown)];
   }
 
   const key = valueToBucketKey(v);

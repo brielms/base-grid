@@ -8,9 +8,10 @@ import {
   Menu,
 } from "obsidian";
 
-import { valueToBucketKey, bucketKeyToDisplay, EMPTY_KEY, applyManualOrder, displayForBucketKey } from "./valueCodec";
+import { EMPTY_KEY, applyManualOrder, displayForBucketKey } from "./valueCodec";
 import { bucketScalarValue, computeQuantileBuckets, quantileLabelFor, defaultOrderForSpec, INVALID_KEY } from "./bucketEngine";
-import { bucketKeysForValue, isMultiValue, type MultiValueMode } from "./multiValue";
+import { isMultiValue, type MultiValueMode } from "./multiValue";
+import { parseCommaList, asNoteProp } from "./cardConfig";
 import type { CellMode, DragPayload } from "./matrixTypes";
 import { MatrixDrilldownModal } from "../ui/drilldownModal";
 import { TextPromptModal } from "../ui/textPromptModal";
@@ -42,7 +43,7 @@ function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
 }
 
-function toList(v: any): string[] {
+function toList(v: unknown): string[] {
   if (Array.isArray(v)) return v.map(String).filter(Boolean);
   if (typeof v === "string" && v.trim().length) return [v.trim()];
   return [];
@@ -53,7 +54,7 @@ function dedupe(a: string[]): string[] {
 }
 
 function writeAxisMove(
-  fm: any,
+  fm: unknown,
   propName: string,
   fromKey: string,
   toKey: string,
@@ -101,7 +102,7 @@ function writeAxisMove(
 }
 
 function bucketKeysFor(
-  v: any,
+  v: unknown,
   multiMode: MultiValueMode,
   spec: AxisBucketSpec,
   now: Date,
@@ -111,11 +112,11 @@ function bucketKeysFor(
   // - explode: bucket each element
   // - primary: bucket first element
   // - disallow: bucket the whole list as one scalar string (works for categorical; for non-categorical will likely become INVALID)
-  const values: any[] = [];
+  const values: unknown[] = [];
 
   if (v === null) values.push(null);
   else if (v instanceof ListValue) {
-    const arr = (v as any).values;
+    const arr = (v).values;
     const elems = Array.isArray(arr) ? arr : [];
     if (multiMode === "explode") values.push(...elems);
     else if (multiMode === "primary") values.push(elems[0] ?? null);
@@ -142,12 +143,91 @@ function bucketKeysFor(
   return Array.from(new Set(keys));
 }
 
+function compareEntriesForSorting(a: unknown, b: unknown, sortProp: BasesPropertyId, direction: "asc" | "desc"): number {
+  const aVal = a.getValue(sortProp);
+  const bVal = b.getValue(sortProp);
+
+  // Handle ListValue: use first element only
+  const aEffective = isMultiValue(aVal) ? (aVal).values?.[0] : aVal;
+  const bEffective = isMultiValue(bVal) ? (bVal).values?.[0] : bVal;
+
+  // Missing values sort last
+  if (aEffective === null || aEffective === undefined) return 1;
+  if (bEffective === null || bEffective === undefined) return -1;
+
+  const aStr = String(aEffective);
+  const bStr = String(bEffective);
+
+  // Try numeric comparison
+  const aNum = Number(aStr);
+  const bNum = Number(bStr);
+  if (!isNaN(aNum) && !isNaN(bNum)) {
+    return direction === "desc" ? bNum - aNum : aNum - bNum;
+  }
+
+  // Try date comparison
+  const aDate = new Date(aStr);
+  const bDate = new Date(bStr);
+  if (!isNaN(aDate.getTime()) && !isNaN(bDate.getTime())) {
+    return direction === "desc" ? bDate.getTime() - aDate.getTime() : aDate.getTime() - bDate.getTime();
+  }
+
+  // Fallback to text comparison (case-insensitive)
+  const result = aStr.toLowerCase().localeCompare(bStr.toLowerCase());
+  return direction === "desc" ? -result : result;
+}
+
+function computeCellSummary(entries: unknown[], summaryMode: string, summaryField: BasesPropertyId | ""): { count: number; sum?: number; avg?: number; min?: number; max?: number; numericCount: number } {
+  const count = entries.length;
+  if (summaryMode === "count" || summaryMode === "off") {
+    return { count, numericCount: 0 };
+  }
+
+  if (!summaryField) {
+    return { count, numericCount: 0 };
+  }
+
+  let sum = 0;
+  let countValid = 0;
+  let min: number | undefined;
+  let max: number | undefined;
+
+  for (const entry of entries) {
+    const val = entry.getValue(summaryField);
+    // Handle ListValue: use first element only
+    const effective = isMultiValue(val) ? (val).values?.[0] : val;
+    if (effective !== null && effective !== undefined) {
+      const num = Number(String(effective));
+      if (!isNaN(num)) {
+        sum += num;
+        countValid++;
+        if (min === undefined || num < min) min = num;
+        if (max === undefined || num > max) max = num;
+      }
+    }
+  }
+
+  if (countValid === 0) {
+    return { count, numericCount: 0 };
+  }
+
+  return {
+    count,
+    sum: Math.round(sum * 100) / 100, // Round to 2 decimals
+    avg: Math.round((sum / countValid) * 100) / 100,
+    min: min !== undefined ? Math.round(min * 100) / 100 : undefined,
+    max: max !== undefined ? Math.round(max * 100) / 100 : undefined,
+    numericCount: countValid,
+  };
+}
+
 export class MatrixBasesView extends BasesView {
   readonly type = VIEW_TYPE_MATRIX;
 
   private rootEl: HTMLElement;
   private headerEl: HTMLElement;
   private gridEl: HTMLElement;
+  private previewEntry: unknown | null = null;
 
   constructor(controller: QueryController, parentEl: HTMLElement) {
     super(controller);
@@ -160,7 +240,7 @@ export class MatrixBasesView extends BasesView {
   }
 
   private computeWritebackDiagnostics(
-    entries: any[],
+    entries: unknown[],
     rowsProp: BasesPropertyId,
     colsProp: BasesPropertyId,
     rowsMode: MultiValueMode,
@@ -182,7 +262,7 @@ export class MatrixBasesView extends BasesView {
     return { allowed, rowMulti, colMulti, reasons };
   }
 
-  private collectFrontmatterPropertyNames(entries: any[]): string[] {
+  private collectFrontmatterPropertyNames(entries: unknown[]): string[] {
     const counts = new Map<string, number>();
 
     for (const entry of entries) {
@@ -203,7 +283,42 @@ export class MatrixBasesView extends BasesView {
     return arr.map(([k]) => k);
   }
 
+  private ensureViewDefaults(): void {
+    const defaults: Record<string, unknown> = {
+      cardFields: "",
+      cellSortBy: "",
+      cellSortDir: "asc",
+      cellSummaryMode: "count",
+      cellSummaryField: "",
+      compactFields: "",
+      compactMaxFields: 2,
+      heatmapMode: "off",
+      heatmapStrength: 35,
+      heatmapScale: "linear",
+    };
+
+    for (const [k, def] of Object.entries(defaults)) {
+      const v = this.config.get(k);
+      if (v === undefined || v === null) {
+        this.config.set(k, def);
+      }
+    }
+  }
+
+  private getSampleEntry(): unknown | null {
+    // Prefer contextual preview entry (from clicked cell), otherwise use global first entry
+    if (this.previewEntry) {
+      return this.previewEntry;
+    }
+    // Get the first entry from current data for preview
+    // This is called during onDataUpdated, so we have access to this.data
+    return this.data && this.data.data && this.data.data.length > 0 ? this.data.data[0] : null;
+  }
+
   onDataUpdated(): void {
+    // Ensure all new view options have defaults for existing views
+    this.ensureViewDefaults();
+
     // ✅ Bases gives you the latest query output here:
     // this.data is BasesQueryResult
     // this.config is BasesViewConfig
@@ -241,24 +356,24 @@ export class MatrixBasesView extends BasesView {
       const nums: number[] = [];
       for (const entry of entries) {
         const v = entry.getValue(rowsProp);
-        if (v && !(v as any).values) { // crude skip ListValue; we'll handle elements below
+        if (v && !(v as unknown).values) { // crude skip ListValue; we'll handle elements below
           const n = Number(v.toString());
           if (Number.isFinite(n)) nums.push(n);
         }
       }
-      rowQuantEdges = computeQuantileBuckets(nums, rowSpec.k!).edges;
+      rowQuantEdges = computeQuantileBuckets(nums, rowSpec.k).edges;
     }
 
     if (colSpec.type === "numberQuantiles") {
       const nums: number[] = [];
       for (const entry of entries) {
         const v = entry.getValue(colsProp);
-        if (v && !(v as any).values) {
+        if (v && !(v as unknown).values) {
           const n = Number(v.toString());
           if (Number.isFinite(n)) nums.push(n);
         }
       }
-      colQuantEdges = computeQuantileBuckets(nums, colSpec.k!).edges;
+      colQuantEdges = computeQuantileBuckets(nums, colSpec.k).edges;
     }
 
     const diag = this.computeWritebackDiagnostics(this.data.data, rowsProp, colsProp, rowsMultiMode, colsMultiMode);
@@ -267,12 +382,12 @@ export class MatrixBasesView extends BasesView {
     const writebackAllowed = diag.allowed && rowReversible && colReversible;
 
     // Debug logging
-    console.log("🔍 DRAG/DROP DEBUG:");
-    console.log(`  Properties: ${rowsProp} (row), ${colsProp} (col)`);
-    console.log(`  Bucket types: ${rowSpec.type} (row), ${colSpec.type} (col)`);
-    console.log(`  Checks: rowReversible=${rowReversible}, colReversible=${colReversible}, diag.allowed=${diag.allowed}`);
-    console.log(`  Result: writebackAllowed=${writebackAllowed}`);
-    console.log(`  Full specs:`, { rowSpec, colSpec });
+    console.debug("🔍 DRAG/DROP DEBUG:");
+    console.debug(`  Properties: ${rowsProp} (row), ${colsProp} (col)`);
+    console.debug(`  Bucket types: ${rowSpec.type} (row), ${colSpec.type} (col)`);
+    console.debug(`  Checks: rowReversible=${rowReversible}, colReversible=${colReversible}, diag.allowed=${diag.allowed}`);
+    console.debug(`  Result: writebackAllowed=${writebackAllowed}`);
+    console.debug(`  Full specs:`, { rowSpec, colSpec });
 
     // Now call your existing matrix builder/render path:
     // - bucket rows/cols
@@ -284,18 +399,18 @@ export class MatrixBasesView extends BasesView {
   }
 
   private renderMatrix(
-    entries: any[],
+    entries: unknown[],
     rowsProp: BasesPropertyId,
     colsProp: BasesPropertyId,
     writebackAllowed: boolean,
     rowSpec: AxisBucketSpec,
     colSpec: AxisBucketSpec,
     now: Date,
-    rowsState: any,
-    colsState: any,
+    rowsState: unknown,
+    colsState: unknown,
     rowsMultiMode: MultiValueMode,
     colsMultiMode: MultiValueMode,
-    diag: any,
+    diag: unknown,
     rowQuantEdges: number[],
     colQuantEdges: number[],
     rowReversible: boolean,
@@ -309,7 +424,24 @@ export class MatrixBasesView extends BasesView {
     const includeEmpty = this.config.get("includeEmpty") ?? true;
     const cellMode = (this.config.get("cellMode") as CellMode) ?? "cards";
     const maxCardsPerCell = clamp(Number(this.config.get("maxCardsPerCell")) || 6, 0, 50);
-    const enableDrag = this.config.get("enableDrag") ?? true;
+
+    // New cell rendering options
+    const cardFieldsRaw = (this.config.get("cardFields") as string) ?? "";
+    const cardFields = parseCommaList(cardFieldsRaw);
+    const cellSortByRaw = ((this.config.get("cellSortBy") as string) ?? "").trim();
+    const cellSortBy = cellSortByRaw ? asNoteProp(cellSortByRaw) : "";
+    const cellSortDir = ((this.config.get("cellSortDir") as string) ?? "asc") as "asc" | "desc";
+    const cellSummaryMode = (this.config.get("cellSummaryMode") as string) ?? "count";
+    const cellSummaryFieldRaw = ((this.config.get("cellSummaryField") as string) ?? "").trim();
+    const cellSummaryField = cellSummaryFieldRaw ? asNoteProp(cellSummaryFieldRaw) : "";
+    const compactFieldsRaw = (this.config.get("compactFields") as string) ?? "";
+    const compactFields = parseCommaList(compactFieldsRaw);
+    const compactMaxFields = Number(this.config.get("compactMaxFields")) || 2;
+
+    // Heatmap options
+    const heatmapMode = (this.config.get("heatmapMode") as string) ?? "off";
+    const heatmapStrength = Number(this.config.get("heatmapStrength")) || 35;
+    const heatmapScale = (this.config.get("heatmapScale") as string) ?? "linear";
 
     const enableDragSetting = this.config.get("enableDrag") ?? true;
     const rowsIsNote = isNoteProperty(rowsProp);
@@ -317,21 +449,21 @@ export class MatrixBasesView extends BasesView {
     const writebackAllowedFinal = writebackAllowed && enableDragSetting && rowsIsNote && colsIsNote;
 
     // Debug logging
-    console.log("🎯 FINAL DRAG/DROP CHECK:");
-    console.log(`  writebackAllowed: ${writebackAllowed}`);
-    console.log(`  enableDragSetting: ${enableDragSetting}`);
-    console.log(`  rowsIsNote: ${rowsIsNote} (${rowsProp})`);
-    console.log(`  colsIsNote: ${colsIsNote} (${colsProp})`);
-    console.log(`  FINAL RESULT: writebackAllowedFinal=${writebackAllowedFinal}`);
+    console.debug("🎯 FINAL DRAG/DROP CHECK:");
+    console.debug(`  writebackAllowed: ${writebackAllowed}`);
+    console.debug(`  enableDragSetting: ${String(enableDragSetting)}`);
+    console.debug(`  rowsIsNote: ${rowsIsNote} (${rowsProp})`);
+    console.debug(`  colsIsNote: ${colsIsNote} (${colsProp})`);
+    console.debug(`  FINAL RESULT: writebackAllowedFinal=${writebackAllowedFinal}`);
     if (diag.reasons.length > 0) {
-      console.log(`  diag reasons:`, diag.reasons);
+      console.debug(`  diag reasons:`, diag.reasons);
     }
 
     // Add status banner
     const status = this.rootEl.createDiv({ cls: "bmv-status" });
 
     if (!enableDragSetting) {
-      status.setText("Drag & drop is OFF (enable it in Configure view).");
+      status.setText("Drag & drop is off (enable it in configure view).");
     } else if (!rowsIsNote || !colsIsNote) {
       status.setText("Drag disabled: only note.* properties are writable.");
     } else if (!writebackAllowed) {
@@ -349,7 +481,7 @@ export class MatrixBasesView extends BasesView {
     const colKeys = new Set<string>();
 
     // Cell -> entries
-    const cells = new Map<CellKey, any[]>();
+    const cells = new Map<CellKey, unknown[]>();
 
     // Track uniques so explode doesn't duplicate the same file in same cell
     const seen = new Map<string, Set<string>>(); // cellKey -> set(filePath)
@@ -392,6 +524,18 @@ export class MatrixBasesView extends BasesView {
     const rowLabel = (k: string) => displayForBucketKey(k, rowsState.aliases);
     const colLabel = (k: string) => displayForBucketKey(k, colsState.aliases);
 
+    // Compute heatmap values
+    let maxCellCount = 0;
+    if (heatmapMode !== "off") {
+      for (const rKey of sortedRowKeys) {
+        for (const cKey of sortedColKeys) {
+          const ck = cellKey(rKey, cKey);
+          const cellEntries = cells.get(ck) ?? [];
+          maxCellCount = Math.max(maxCellCount, cellEntries.length);
+        }
+      }
+    }
+
     // Render axis bar
     if (!this.headerEl) {
       this.headerEl = this.rootEl.createDiv({ cls: "bmv-header" });
@@ -412,6 +556,10 @@ export class MatrixBasesView extends BasesView {
       rowsMultiMode,
       colsMultiMode,
       availableNoteProps: available,
+      cardFields,
+      sampleEntry: this.getSampleEntry(),
+      heatmapMode,
+      maxCellCount,
       onPickRowsProp: (propName) => {
         this.config.set("rowsProp", `note.${propName}`);
         this.onDataUpdated();
@@ -426,6 +574,10 @@ export class MatrixBasesView extends BasesView {
       },
       onPickColsMultiMode: (mode) => {
         this.config.set("colsMultiMode", mode);
+        this.onDataUpdated();
+      },
+      onPickCardFields: (fields: string[]) => {
+        this.config.set("cardFields", fields.join(","));
         this.onDataUpdated();
       },
       dragStatusText,
@@ -595,12 +747,35 @@ export class MatrixBasesView extends BasesView {
         const ck = cellKey(rKey, cKey);
         const cellEntries = cells.get(ck) ?? [];
 
+        // Apply cell sorting if configured
+        if (cellSortBy) {
+          cellEntries.sort((a, b) => compareEntriesForSorting(a, b, cellSortBy, cellSortDir));
+        }
+
         const cellEl = grid.createDiv({ cls: "bmv-cell" });
         cellEl.dataset.rowKey = rKey;
         cellEl.dataset.colKey = cKey;
 
+        // Set heatmap CSS variables
+        if (heatmapMode !== "off") {
+          const count = cellEntries.length;
+          let t = 0;
+          if (maxCellCount > 0) {
+            if (heatmapScale === "log") {
+              t = Math.log(1 + count) / Math.log(1 + maxCellCount);
+            } else {
+              t = count / maxCellCount;
+            }
+          }
+          cellEl.style.setProperty("--bmv-hm", t.toString());
+          cellEl.style.setProperty("--bmv-hm-strength", (heatmapStrength / 100).toString());
+        }
+
         // Click cell -> drilldown
         cellEl.onClickEvent(() => {
+          // Set contextual preview entry for template editors
+          this.previewEntry = cellEntries.length > 0 ? cellEntries[0] : null;
+
           new MatrixDrilldownModal(this.app, {
             rowLabel: rowLabel(rKey),
             colLabel: colLabel(cKey),
@@ -615,8 +790,41 @@ export class MatrixBasesView extends BasesView {
           }).open();
         });
 
-        // Cell header (count)
-        cellEl.createDiv({ cls: "bmv-cell-count", text: `${cellEntries.length}` });
+        // Cell summary chips
+        const summary = computeCellSummary(cellEntries, cellSummaryMode, cellSummaryField);
+        if (cellSummaryMode !== "off") {
+          const cellTop = cellEl.createDiv({ cls: "bmv-cell-top" });
+          const chips = cellTop.createDiv({ cls: "bmv-cell-chips" });
+
+          // Always show count chip
+          chips.createDiv({ cls: "bmv-chip-mini", text: `${summary.count}` });
+
+          // Show sum/avg/min/max if applicable
+          if ((summary.sum !== undefined && (cellSummaryMode === "sum" || cellSummaryMode === "avg")) ||
+              (summary.min !== undefined && cellSummaryMode === "min") ||
+              (summary.max !== undefined && cellSummaryMode === "max")) {
+            let label: string;
+            let value: number | undefined;
+
+            if (cellSummaryMode === "sum") {
+              label = "SUM";
+              value = summary.sum;
+            } else if (cellSummaryMode === "avg") {
+              label = "AVG";
+              value = summary.avg;
+            } else if (cellSummaryMode === "min") {
+              label = "MIN";
+              value = summary.min;
+            } else { // max
+              label = "MAX";
+              value = summary.max;
+            }
+
+            const valueStr = value !== undefined ? value?.toFixed(2) : "—";
+            const countStr = summary.numericCount !== undefined ? `(${summary.numericCount})` : "(0)";
+            chips.createDiv({ cls: "bmv-chip-mini", text: `${label}${countStr}: ${valueStr}` });
+          }
+        }
 
         // Cards / compact / count-only
         if (cellMode !== "count" && cellEntries.length > 0) {
@@ -624,7 +832,65 @@ export class MatrixBasesView extends BasesView {
 
           const shown = cellEntries.slice(0, maxCardsPerCell);
           for (const e of shown) {
-            const card = listEl.createDiv({ cls: "bmv-card", text: e.file.basename });
+            const card = listEl.createDiv({ cls: "bmv-card" });
+
+            // Card title
+            card.createDiv({ cls: "bmv-card-title", text: e.file.basename });
+
+            // Compact subtitle (only in compact mode)
+            if (cellMode === "compact" && compactFields.length > 0 && compactMaxFields > 0) {
+              const subtitleValues: string[] = [];
+              for (const field of compactFields) {
+                if (subtitleValues.length >= compactMaxFields) break;
+                const propId = asNoteProp(field);
+                const val = e.getValue(propId);
+                if (val === null || val === undefined) continue;
+
+                let valueText: string;
+                if (isMultiValue(val)) {
+                  const values = (val).values?.map(String) || [];
+                  valueText = values.length > 0 ? values[0] : "";
+                } else {
+                  valueText = String(val).trim();
+                }
+
+                if (valueText) {
+                  subtitleValues.push(valueText);
+                }
+              }
+
+              if (subtitleValues.length > 0) {
+                card.createDiv({ cls: "bmv-card-subtitle", text: subtitleValues.join(" • ") });
+              }
+            }
+
+            // Card fields as pills (only in cards mode)
+            if (cellMode === "cards") {
+              const metaEl = card.createDiv({ cls: "bmv-card-meta" });
+              for (const field of cardFields) {
+                const propId = asNoteProp(field);
+                const val = e.getValue(propId);
+                if (val === null || val === undefined) continue;
+
+                let displayText: string;
+                let tooltipText: string;
+                if (isMultiValue(val)) {
+                  const values = (val).values?.map(String) || [];
+                  if (values.length === 0) continue;
+                  const capped = values.slice(0, 3);
+                  displayText = `${capped.join(", ")}${values.length > 3 ? ` +${values.length - 3}` : ""}`;
+                  tooltipText = `${field}: ${values.join(", ")}`;
+                } else {
+                  const strVal = String(val).trim();
+                  if (!strVal) continue;
+                  displayText = strVal;
+                  tooltipText = `${field}: ${strVal}`;
+                }
+
+                const pillEl = metaEl.createSpan({ cls: "bmv-pill", text: displayText });
+                pillEl.setAttr("title", tooltipText);
+              }
+            }
 
             card.onClickEvent((evt) => {
               evt.stopPropagation();
