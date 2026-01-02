@@ -1,4 +1,5 @@
 import type { Value } from "obsidian";
+import { INVALID_KEY } from "./bucketEngine";
 
 export const EMPTY_KEY = "__EMPTY__";
 
@@ -30,6 +31,54 @@ export function displayForBucketKey(key: string, aliases?: Record<string, string
   return key;
 }
 
+function isStrictNumberKey(s: string): boolean {
+  return /^-?\d+(\.\d+)?$/.test(s);
+}
+
+function isISODateKey(s: string): boolean {
+  // Basic YYYY-MM-DD pattern or valid ISO date
+  const basicDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+  if (basicDatePattern.test(s)) return true;
+
+  // For broader ISO parsing, try Date.parse but be conservative
+  const parsed = Date.parse(s);
+  return !isNaN(parsed) && isFinite(parsed);
+}
+
+function smartCategoricalSort(keys: string[]): string[] {
+  // Separate special keys
+  const specialKeys = [INVALID_KEY, EMPTY_KEY];
+  const remainingKeys = keys.filter(k => !specialKeys.includes(k));
+
+  if (remainingKeys.length <= 1) {
+    return [...remainingKeys, ...specialKeys.filter(k => keys.includes(k))];
+  }
+
+  let sorted: string[];
+
+  if (remainingKeys.every(isStrictNumberKey)) {
+    // Sort numerically
+    sorted = remainingKeys.sort((a, b) => Number(a) - Number(b));
+  } else if (remainingKeys.every(isISODateKey)) {
+    // Sort by date
+    sorted = remainingKeys.sort((a, b) => {
+      const dateA = Date.parse(a);
+      const dateB = Date.parse(b);
+      return dateA - dateB;
+    });
+  } else {
+    // Fallback to lexicographic
+    sorted = remainingKeys.sort((a, b) => a.localeCompare(b));
+  }
+
+  // Append special keys in order: INVALID_KEY then EMPTY_KEY
+  const result = [...sorted];
+  if (keys.includes(INVALID_KEY)) result.push(INVALID_KEY);
+  if (keys.includes(EMPTY_KEY)) result.push(EMPTY_KEY);
+
+  return result;
+}
+
 export function applyManualOrder(keys: string[], order?: string[]): string[] {
   const set = new Set(keys);
 
@@ -43,11 +92,8 @@ export function applyManualOrder(keys: string[], order?: string[]): string[] {
     }
   }
 
-  const rest = Array.from(set).sort((a, b) => a.localeCompare(b));
+  // Use smart categorical sorting for remaining keys
+  const rest = smartCategoricalSort(Array.from(set));
 
-  // Keep (empty) last by default (but still visible if includeEmpty)
-  const restNoEmpty = rest.filter((k) => k !== EMPTY_KEY);
-  const hasEmpty = rest.includes(EMPTY_KEY);
-
-  return hasEmpty ? [...out, ...restNoEmpty, EMPTY_KEY] : [...out, ...restNoEmpty];
+  return [...out, ...rest];
 }
