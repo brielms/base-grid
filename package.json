@@ -1,6 +1,6 @@
 {
 	"name": "bases-matrix-view",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"description": "A Matrix view for Bases that displays data in a 2D grid with drag-and-drop functionality",
 	"main": "main.js",
 	"type": "module",
