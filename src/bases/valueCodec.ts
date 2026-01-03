@@ -1,5 +1,6 @@
 import type { Value } from "obsidian";
 import { INVALID_KEY } from "./bucketEngine";
+import type { AxisBucketSpec } from "./bucketSpec";
 
 export const EMPTY_KEY = "__EMPTY__";
 
@@ -96,4 +97,48 @@ export function applyManualOrder(keys: string[], order?: string[]): string[] {
   const rest = smartCategoricalSort(Array.from(set));
 
   return [...out, ...rest];
+}
+
+/**
+ * Determines if a bucket key can be mapped back to a writable value for frontmatter.
+ * Used when creating new notes in matrix cells to set appropriate properties.
+ */
+export function bucketKeyToWritableValue(
+  spec: AxisBucketSpec,
+  key: string
+): { ok: boolean; value?: any; reason?: string } {
+  // Skip empty buckets
+  if (key === EMPTY_KEY) {
+    return { ok: false };
+  }
+
+  // Skip invalid buckets
+  if (key === INVALID_KEY) {
+    return { ok: false, reason: "invalid" };
+  }
+
+  // Handle different bucket spec types
+  if (spec.type === "categorical") {
+    // For categorical, we can use the key directly as it's a string representation
+    // of the original value (from valueToBucketKey)
+    return { ok: true, value: key };
+  }
+
+  if (spec.type === "dateRelative") {
+    // Derived buckets - not supported for writeback yet
+    return { ok: false, reason: "derived-not-supported" };
+  }
+
+  if (spec.type === "numberRanges") {
+    // For MVP, skip range-based buckets as they don't have clean midpoint mapping
+    return { ok: false, reason: "derived-not-supported" };
+  }
+
+  if (spec.type === "numberQuantiles") {
+    // Quantile buckets are derived - not supported for writeback yet
+    return { ok: false, reason: "derived-not-supported" };
+  }
+
+  // Fallback for unknown spec types
+  return { ok: false, reason: "unknown-spec-type" };
 }

@@ -111,6 +111,12 @@ export default class BasesMatrixViewPlugin extends Plugin {
           options: { off: "Off", count: "Count only", sum: "Sum (numeric)", avg: "Average (numeric)", min: "Minimum (numeric)", max: "Maximum (numeric)" },
         },
         {
+          key: "showCountChip",
+          type: "toggle",
+          displayName: "Show count chip",
+          default: true,
+        },
+        {
           key: "cellSummaryField",
           type: "text",
           displayName: "Cell summary field (numeric)",

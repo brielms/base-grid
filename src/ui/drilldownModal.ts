@@ -79,6 +79,9 @@ type DrilldownArgs = {
   reversible: boolean;
   rowsMultiMode: MultiValueMode;
   colsMultiMode: MultiValueMode;
+  rowSpec: import("../bases/bucketSpec").AxisBucketSpec;
+  colSpec: import("../bases/bucketSpec").AxisBucketSpec;
+  onCreateNote?: (rowKey: string, colKey: string) => void;
 };
 
 function notePropName(propId: BasesPropertyId): string {
@@ -102,6 +105,27 @@ export class MatrixDrilldownModal extends Modal {
     contentEl.createDiv({ text: `${this.args.entries.length} item(s)` });
 
     const actions = contentEl.createDiv({ cls: "bmv-actions" });
+
+    // New note button - always available
+    const createBtn = actions.createEl("button", {
+      text: "New note in this cell…",
+      cls: "mod-cta"
+    });
+
+    // Disable if either axis is unset
+    const hasRowsProp = this.args.rowsProp && this.args.rowsProp !== "";
+    const hasColsProp = this.args.colsProp && this.args.colsProp !== "";
+    if (!hasRowsProp || !hasColsProp) {
+      createBtn.disabled = true;
+      createBtn.setAttr("title", "Row and column properties must be configured");
+    } else {
+      createBtn.addEventListener("click", () => {
+        if (this.args.onCreateNote) {
+          this.args.onCreateNote(this.args.targetRowKey, this.args.targetColKey);
+          this.close();
+        }
+      });
+    }
 
     if (!this.args.reversible) {
       contentEl.createDiv({

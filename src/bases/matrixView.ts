@@ -8,13 +8,14 @@ import {
   Menu,
 } from "obsidian";
 
-import { EMPTY_KEY, applyManualOrder, displayForBucketKey } from "./valueCodec";
+import { EMPTY_KEY, applyManualOrder, displayForBucketKey, bucketKeyToWritableValue } from "./valueCodec";
 import { bucketScalarValue, computeQuantileBuckets, quantileLabelFor, defaultOrderForSpec, INVALID_KEY } from "./bucketEngine";
 import { isMultiValue, type MultiValueMode } from "./multiValue";
 import { parseCommaList, asNoteProp } from "./cardConfig";
 import type { CellMode, DragPayload } from "./matrixTypes";
 import { MatrixDrilldownModal } from "../ui/drilldownModal";
 import { TextPromptModal } from "../ui/textPromptModal";
+import { CreateNoteModal } from "../ui/createNoteModal";
 import { getAxisState, setAlias, setOrder, setBucketSpec } from "./axisState";
 import { BucketConfigModal } from "../ui/bucketConfigModal";
 import { renderAxisBar } from "../ui/axisBar";
@@ -295,6 +296,7 @@ export class MatrixBasesView extends BasesView {
       heatmapMode: "off",
       heatmapStrength: 35,
       heatmapScale: "linear",
+      showCountChip: true,
     };
 
     for (const [k, def] of Object.entries(defaults)) {
@@ -434,6 +436,7 @@ export class MatrixBasesView extends BasesView {
     const cellSummaryMode = (this.config.get("cellSummaryMode") as string) ?? "count";
     const cellSummaryFieldRaw = ((this.config.get("cellSummaryField") as string) ?? "").trim();
     const cellSummaryField = cellSummaryFieldRaw ? asNoteProp(cellSummaryFieldRaw) : "";
+    const showCountChip = this.config.get("showCountChip") !== false;
     const compactFieldsRaw = (this.config.get("compactFields") as string) ?? "";
     const compactFields = parseCommaList(compactFieldsRaw);
     const compactMaxFields = Number(this.config.get("compactMaxFields")) || 2;
@@ -787,6 +790,9 @@ export class MatrixBasesView extends BasesView {
             reversible: writebackAllowedFinal,
             rowsMultiMode,
             colsMultiMode,
+            rowSpec,
+            colSpec,
+            onCreateNote: (rowKey, colKey) => this.createNoteForCell(rowKey, colKey, rowSpec, colSpec, rowsProp, colsProp),
           }).open();
         });
 
@@ -796,8 +802,10 @@ export class MatrixBasesView extends BasesView {
           const cellTop = cellEl.createDiv({ cls: "bmv-cell-top" });
           const chips = cellTop.createDiv({ cls: "bmv-cell-chips" });
 
-          // Always show count chip
-          chips.createDiv({ cls: "bmv-chip-mini", text: `${summary.count}` });
+          // Show count chip if enabled, or if in count-only mode
+          if (showCountChip || cellMode === "count") {
+            chips.createDiv({ cls: "bmv-chip-mini bmv-chip-count", text: `${summary.count}` });
+          }
 
           // Show sum/avg/min/max if applicable
           if ((summary.sum !== undefined && (cellSummaryMode === "sum" || cellSummaryMode === "avg")) ||
@@ -822,13 +830,14 @@ export class MatrixBasesView extends BasesView {
 
             const valueStr = value !== undefined ? value?.toFixed(2) : "—";
             const countStr = summary.numericCount !== undefined ? `(${summary.numericCount})` : "(0)";
-            chips.createDiv({ cls: "bmv-chip-mini", text: `${label}${countStr}: ${valueStr}` });
+            chips.createDiv({ cls: "bmv-chip-mini bmv-chip-summary", text: `${label}${countStr}: ${valueStr}` });
           }
         }
 
         // Cards / compact / count-only
         if (cellMode !== "count" && cellEntries.length > 0) {
-          const listEl = cellEl.createDiv({ cls: cellMode === "compact" ? "bmv-list-compact" : "bmv-list" });
+          const cellBody = cellEl.createDiv({ cls: "bmv-cell-body" });
+          const listEl = cellBody.createDiv({ cls: cellMode === "compact" ? "bmv-list-compact" : "bmv-list" });
 
           const shown = cellEntries.slice(0, maxCardsPerCell);
           for (const e of shown) {
@@ -970,6 +979,86 @@ export class MatrixBasesView extends BasesView {
     } catch (err) {
       console.error(err);
       new Notice("Failed to update properties (see console)");
+    }
+  }
+
+  private async createNoteForCell(
+    rowKey: string,
+    colKey: string,
+    rowSpec: AxisBucketSpec,
+    colSpec: AxisBucketSpec,
+    rowsProp: BasesPropertyId,
+    colsProp: BasesPropertyId
+  ): Promise<void> {
+    // Determine writable values for each axis
+    const rowMapping = bucketKeyToWritableValue(rowSpec, rowKey);
+    const colMapping = bucketKeyToWritableValue(colSpec, colKey);
+
+    // Check if either axis is unset
+    const hasRowsProp = rowsProp && rowsProp !== "";
+    const hasColsProp = colsProp && colsProp !== "";
+
+    if (!hasRowsProp || !hasColsProp) {
+      new Notice("Cannot create note: row and column properties must be configured");
+      return;
+    }
+
+    // Show modal to get note title and folder
+    const result = await new Promise<{ title: string; folder: string } | null>((resolve) => {
+      new CreateNoteModal(this.app, {
+        rowKey,
+        colKey,
+        rowMapping,
+        colMapping,
+        onSubmit: (title, folder) => resolve({ title, folder }),
+        onCancel: () => resolve(null),
+      }).open();
+    });
+
+    if (!result) return;
+
+    const { title, folder } = result;
+
+    try {
+      // Create safe filename
+      const safeTitle = title.replace(/[<>:"/\\|?*]/g, "").trim() || "Untitled";
+      const filename = `${safeTitle}.md`;
+      const fullPath = folder ? `${folder}/${filename}` : filename;
+
+      // Build frontmatter
+      const frontmatter: Record<string, any> = {};
+
+      // Set row property if mapping is valid
+      if (rowMapping.ok) {
+        const propName = notePropName(rowsProp);
+        frontmatter[propName] = rowMapping.value;
+      }
+
+      // Set column property if mapping is valid
+      if (colMapping.ok) {
+        const propName = notePropName(colsProp);
+        frontmatter[propName] = colMapping.value;
+      }
+
+      // Convert to YAML string
+      const yamlLines = ["---"];
+      for (const [key, value] of Object.entries(frontmatter)) {
+        yamlLines.push(`${key}: ${JSON.stringify(value)}`);
+      }
+      yamlLines.push("---");
+      const content = yamlLines.join("\n") + "\n";
+
+      // Create the file
+      const file = await this.app.vault.create(fullPath, content);
+
+      // Open in new leaf/tab
+      const leaf = this.app.workspace.getLeaf('tab');
+      await leaf.openFile(file);
+
+      new Notice(`Created note: ${file.basename}`);
+    } catch (err) {
+      console.error("Failed to create note:", err);
+      new Notice("Failed to create note (see console)");
     }
   }
 }
