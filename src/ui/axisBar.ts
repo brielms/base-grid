@@ -46,6 +46,9 @@ export function renderAxisBar(args: {
   cardFields: string[];
   sampleEntry: unknown;
 
+  cardThumbMode: "off" | "frontmatter" | "firstEmbedded";
+  cardThumbField: string;
+
   heatmapMode: string;
   maxCellCount: number;
 
@@ -56,6 +59,7 @@ export function renderAxisBar(args: {
   onPickColsMultiMode: (mode: MultiValueMode) => void;
 
   onPickCardFields: (fields: string[]) => void;
+  onPickThumbField: (fieldName: string) => void;
 
   dragStatusText: string;
 
@@ -67,9 +71,10 @@ export function renderAxisBar(args: {
     rowSpec, colSpec,
     rowsMultiMode, colsMultiMode,
     availableNoteProps, cardFields, sampleEntry,
+    cardThumbMode, cardThumbField,
     heatmapMode, maxCellCount,
     dragStatusText,
-    onRerender, onPickCardFields,
+    onRerender, onPickCardFields, onPickThumbField,
   } = args;
 
   containerEl.empty();
@@ -162,6 +167,25 @@ export function renderAxisBar(args: {
       },
     }).open();
   };
+
+  // Thumbnail field picker (only shown when frontmatter mode is selected)
+  if (cardThumbMode === "frontmatter") {
+    const thumbFieldChip = displayGroup.createEl("button", {
+      cls: "bmv-chip",
+      text: cardThumbField || "Thumbnail field"
+    });
+    thumbFieldChip.onclick = () => {
+      new PropertyPickerModal(app, {
+        title: "Thumbnail field",
+        items: availableNoteProps,
+        current: cardThumbField,
+        onPick: (propName) => {
+          onPickThumbField(propName);
+          onRerender();
+        },
+      }).open();
+    };
+  }
 
   const compactFieldsChip = displayGroup.createEl("button", {
     cls: "bmv-chip",

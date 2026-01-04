@@ -569,3 +569,23 @@
   color: var(--text-muted);
   white-space: nowrap;
 }
+
+/* Card thumbnails */
+.bmv-thumb {
+  width: 100%;
+  max-width: 120px;
+  height: auto;
+  object-fit: cover;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  flex: 0 0 auto;
+  display: block;
+}
+
+.bmv-thumb-sm {
+  max-width: 80px;
+}
+
+.bmv-thumb-md {
+  max-width: 120px;
+}

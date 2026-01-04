@@ -17,10 +17,12 @@ import { MatrixDrilldownModal } from "../ui/drilldownModal";
 import { TextPromptModal } from "../ui/textPromptModal";
 import { CreateNoteModal } from "../ui/createNoteModal";
 import { getAxisState, setAlias, setOrder, setBucketSpec } from "./axisState";
+import { parseFrontmatter, mergeFrontmatter } from "./frontmatterMerge";
 import { BucketConfigModal } from "../ui/bucketConfigModal";
 import { renderAxisBar } from "../ui/axisBar";
 import type { AxisBucketSpec } from "./bucketSpec";
 import { isReversibleSpec } from "./bucketSpec";
+import { resolveThumbForEntry } from "./thumbResolver";
 
 export const VIEW_TYPE_MATRIX = "bases-matrix-view.matrix";
 
@@ -317,7 +319,24 @@ export class MatrixBasesView extends BasesView {
     return this.data && this.data.data && this.data.data.length > 0 ? this.data.data[0] : null;
   }
 
-  onDataUpdated(): void {
+  private getBaseFolder(): string {
+    try {
+      // Try to get the base file from the controller
+      if (this.controller && (this.controller as any).file) {
+        const baseFile = (this.controller as any).file;
+        if (baseFile && baseFile.parent && baseFile.parent.path) {
+          return baseFile.parent.path;
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to get base folder:", err);
+    }
+
+    // Last fallback: empty string (don't use remembered folder as default)
+    return "";
+  }
+
+  async onDataUpdated(): Promise<void> {
     // Ensure all new view options have defaults for existing views
     this.ensureViewDefaults();
 
@@ -397,10 +416,10 @@ export class MatrixBasesView extends BasesView {
     // - render headers + stacks
     // - wire click -> drilldown modal
     // - wire drag (only if writebackAllowed AND bucket reversible)
-    this.renderMatrix(entries, rowsProp, colsProp, writebackAllowed, rowSpec, colSpec, now, rowsState, colsState, rowsMultiMode, colsMultiMode, diag, rowQuantEdges, colQuantEdges, rowReversible, colReversible);
+    await this.renderMatrix(entries, rowsProp, colsProp, writebackAllowed, rowSpec, colSpec, now, rowsState, colsState, rowsMultiMode, colsMultiMode, diag, rowQuantEdges, colQuantEdges, rowReversible, colReversible);
   }
 
-  private renderMatrix(
+  private async renderMatrix(
     entries: unknown[],
     rowsProp: BasesPropertyId,
     colsProp: BasesPropertyId,
@@ -441,6 +460,12 @@ export class MatrixBasesView extends BasesView {
     const compactFields = parseCommaList(compactFieldsRaw);
     const compactMaxFields = Number(this.config.get("compactMaxFields")) || 2;
 
+    // Thumbnail options
+    const cardThumbMode = (this.config.get("cardThumbMode") as "off" | "frontmatter" | "firstEmbedded") ?? "off";
+    const cardThumbField = (this.config.get("cardThumbField") as string) ?? "cover";
+    const cardThumbSize = (this.config.get("cardThumbSize") as "sm" | "md") ?? "sm";
+    const allowRemoteThumbs = this.config.get("allowRemoteThumbs") === true;
+
     // Heatmap options
     const heatmapMode = (this.config.get("heatmapMode") as string) ?? "off";
     const heatmapStrength = Number(this.config.get("heatmapStrength")) || 35;
@@ -462,7 +487,8 @@ export class MatrixBasesView extends BasesView {
       console.debug(`  diag reasons:`, diag.reasons);
     }
 
-    // Add status banner
+    // Clear any existing status banners and add new status banner
+    this.rootEl.querySelectorAll('.bmv-status').forEach(el => el.remove());
     const status = this.rootEl.createDiv({ cls: "bmv-status" });
 
     if (!enableDragSetting) {
@@ -561,27 +587,33 @@ export class MatrixBasesView extends BasesView {
       availableNoteProps: available,
       cardFields,
       sampleEntry: this.getSampleEntry(),
+      cardThumbMode,
+      cardThumbField,
       heatmapMode,
       maxCellCount,
-      onPickRowsProp: (propName) => {
+      onPickRowsProp: async (propName) => {
         this.config.set("rowsProp", `note.${propName}`);
-        this.onDataUpdated();
+        await this.onDataUpdated();
       },
-      onPickColsProp: (propName) => {
+      onPickColsProp: async (propName) => {
         this.config.set("colsProp", `note.${propName}`);
-        this.onDataUpdated();
+        await this.onDataUpdated();
       },
-      onPickRowsMultiMode: (mode) => {
+      onPickRowsMultiMode: async (mode) => {
         this.config.set("rowsMultiMode", mode);
-        this.onDataUpdated();
+        await this.onDataUpdated();
       },
-      onPickColsMultiMode: (mode) => {
+      onPickColsMultiMode: async (mode) => {
         this.config.set("colsMultiMode", mode);
-        this.onDataUpdated();
+        await this.onDataUpdated();
       },
-      onPickCardFields: (fields: string[]) => {
+      onPickCardFields: async (fields: string[]) => {
         this.config.set("cardFields", fields.join(","));
-        this.onDataUpdated();
+        await this.onDataUpdated();
+      },
+      onPickThumbField: async (fieldName: string) => {
+        this.config.set("cardThumbField", fieldName);
+        await this.onDataUpdated();
       },
       dragStatusText,
       onRerender: () => this.onDataUpdated(),
@@ -843,6 +875,33 @@ export class MatrixBasesView extends BasesView {
           for (const e of shown) {
             const card = listEl.createDiv({ cls: "bmv-card" });
 
+            // Card thumbnail (only in cards mode)
+            if (cellMode === "cards" && cardThumbMode !== "off") {
+              const thumbResult = await resolveThumbForEntry(
+                this.app,
+                e.file,
+                cardThumbMode,
+                cardThumbField,
+                allowRemoteThumbs
+              );
+
+              if (thumbResult.url) {
+                const thumbEl = card.createEl("img", {
+                  cls: `bmv-thumb bmv-thumb-${cardThumbSize}`,
+                  attr: {
+                    src: thumbResult.url,
+                    loading: "lazy",
+                    alt: "Thumbnail",
+                  },
+                });
+
+                // Add error handling for broken images
+                thumbEl.addEventListener("error", () => {
+                  thumbEl.remove();
+                });
+              }
+            }
+
             // Card title
             card.createDiv({ cls: "bmv-card-title", text: e.file.basename });
 
@@ -1003,21 +1062,41 @@ export class MatrixBasesView extends BasesView {
       return;
     }
 
-    // Show modal to get note title and folder
-    const result = await new Promise<{ title: string; folder: string } | null>((resolve) => {
+    // Determine default folder: base folder first, then last used folder
+    const baseFolder = this.getBaseFolder();
+    const lastFolder = (this.config.get("lastCreateNoteFolder") as string) || "";
+    const defaultFolder = baseFolder || lastFolder;
+
+    // Determine default template: last used first, then configured default
+    const lastTemplate = (this.config.get("lastCreateNoteTemplatePath") as string) || "";
+    const defaultTemplate = (this.config.get("createNoteTemplatePath") as string) || "";
+    const defaultTemplatePath = lastTemplate || defaultTemplate;
+
+    // Show modal to get note title, folder, and template
+    const result = await new Promise<{ title: string; folder: string; templatePath?: string } | null>((resolve) => {
       new CreateNoteModal(this.app, {
         rowKey,
         colKey,
         rowMapping,
         colMapping,
-        onSubmit: (title, folder) => resolve({ title, folder }),
+        onSubmit: (title, folder, templatePath) => resolve({ title, folder, templatePath }),
         onCancel: () => resolve(null),
+        defaultFolder,
+        defaultTemplatePath: defaultTemplatePath || undefined,
+        onFolderChange: (folder) => {
+          // Save the folder when user changes it
+          this.config.set("lastCreateNoteFolder", folder);
+        },
+        onTemplateChange: (templatePath) => {
+          // Save the template when user changes it
+          this.config.set("lastCreateNoteTemplatePath", templatePath || "");
+        },
       }).open();
     });
 
     if (!result) return;
 
-    const { title, folder } = result;
+    const { title, folder, templatePath } = result;
 
     try {
       // Create safe filename
@@ -1025,31 +1104,56 @@ export class MatrixBasesView extends BasesView {
       const filename = `${safeTitle}.md`;
       const fullPath = folder ? `${folder}/${filename}` : filename;
 
-      // Build frontmatter
-      const frontmatter: Record<string, any> = {};
+      let content: string;
 
-      // Set row property if mapping is valid
+      // Build injected properties for axis mappings
+      const injectedObj: Record<string, any> = {};
       if (rowMapping.ok) {
         const propName = notePropName(rowsProp);
-        frontmatter[propName] = rowMapping.value;
+        injectedObj[propName] = rowMapping.value;
       }
-
-      // Set column property if mapping is valid
       if (colMapping.ok) {
         const propName = notePropName(colsProp);
-        frontmatter[propName] = colMapping.value;
+        injectedObj[propName] = colMapping.value;
       }
 
-      // Convert to YAML string
-      const yamlLines = ["---"];
-      for (const [key, value] of Object.entries(frontmatter)) {
-        yamlLines.push(`${key}: ${JSON.stringify(value)}`);
+      if (templatePath) {
+        // Load template content
+        const templateFile = this.app.vault.getAbstractFileByPath(templatePath);
+        if (templateFile instanceof TFile) {
+          const templateContent = await this.app.vault.cachedRead(templateFile);
+          const { frontmatterText, body } = parseFrontmatter(templateContent);
+
+          // Merge frontmatter: template first, then injected (injected wins)
+          const mergedFrontmatterText = mergeFrontmatter(frontmatterText, injectedObj);
+
+          // Combine merged frontmatter with template body
+          content = `---\n${mergedFrontmatterText}---\n${body}`;
+        } else {
+          // Template path invalid, fall back to blank note
+          console.warn(`Template file not found: ${templatePath}, creating blank note`);
+          const yamlLines = ["---"];
+          for (const [key, value] of Object.entries(injectedObj)) {
+            yamlLines.push(`${key}: ${JSON.stringify(value)}`);
+          }
+          yamlLines.push("---");
+          content = yamlLines.join("\n") + "\n";
+        }
+      } else {
+        // No template: use existing behavior
+        const yamlLines = ["---"];
+        for (const [key, value] of Object.entries(injectedObj)) {
+          yamlLines.push(`${key}: ${JSON.stringify(value)}`);
+        }
+        yamlLines.push("---");
+        content = yamlLines.join("\n") + "\n";
       }
-      yamlLines.push("---");
-      const content = yamlLines.join("\n") + "\n";
 
       // Create the file
       const file = await this.app.vault.create(fullPath, content);
+
+      // Save the last used template path
+      this.config.set("lastCreateNoteTemplatePath", templatePath || "");
 
       // Open in new leaf/tab
       const leaf = this.app.workspace.getLeaf('tab');

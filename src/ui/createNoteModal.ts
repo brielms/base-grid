@@ -1,12 +1,17 @@
 import { App, Modal, Setting, normalizePath } from "obsidian";
+import { FilePickerModal } from "./filePickerModal";
 
 export class CreateNoteModal extends Modal {
   private readonly rowKey: string;
   private readonly colKey: string;
   private readonly rowMapping: { ok: boolean; value?: any; reason?: string };
   private readonly colMapping: { ok: boolean; value?: any; reason?: string };
-  private readonly onSubmit: (title: string, folder: string) => void;
+  private readonly onSubmit: (title: string, folder: string, templatePath?: string) => void;
   private readonly onCancel: () => void;
+  private readonly defaultFolder: string;
+  private readonly defaultTemplatePath?: string;
+  private readonly onFolderChange?: (folder: string) => void;
+  private readonly onTemplateChange?: (templatePath?: string) => void;
 
   constructor(
     app: App,
@@ -15,8 +20,12 @@ export class CreateNoteModal extends Modal {
       colKey: string;
       rowMapping: { ok: boolean; value?: any; reason?: string };
       colMapping: { ok: boolean; value?: any; reason?: string };
-      onSubmit: (title: string, folder: string) => void;
+      onSubmit: (title: string, folder: string, templatePath?: string) => void;
       onCancel: () => void;
+      defaultFolder?: string;
+      defaultTemplatePath?: string;
+      onFolderChange?: (folder: string) => void;
+      onTemplateChange?: (templatePath?: string) => void;
     }
   ) {
     super(app);
@@ -26,6 +35,10 @@ export class CreateNoteModal extends Modal {
     this.colMapping = args.colMapping;
     this.onSubmit = args.onSubmit;
     this.onCancel = args.onCancel;
+    this.defaultFolder = args.defaultFolder || "";
+    this.defaultTemplatePath = args.defaultTemplatePath;
+    this.onFolderChange = args.onFolderChange;
+    this.onTemplateChange = args.onTemplateChange;
   }
 
   onOpen(): void {
@@ -50,7 +63,8 @@ export class CreateNoteModal extends Modal {
     }
 
     let title = "Untitled";
-    let folder = "";
+    let folder = this.defaultFolder;
+    let templatePath = this.defaultTemplatePath;
 
     // Title input
     new Setting(contentEl)
@@ -63,6 +77,49 @@ export class CreateNoteModal extends Modal {
         t.inputEl.focus();
       });
 
+    // Template picker
+    const templateDisplay = templatePath ?
+      this.app.vault.getAbstractFileByPath(templatePath)?.name || "(invalid)" :
+      "(none)";
+
+    new Setting(contentEl)
+      .setName("Template")
+      .setDesc("Template note to base the new note on")
+      .addText((t) => {
+        t.setValue(templateDisplay);
+        t.setDisabled(true);
+      })
+      .addButton((b) => {
+        b.setButtonText("Choose…");
+        b.onClick(() => {
+          new FilePickerModal(this.app, (file) => {
+            templatePath = file.path;
+            const newDisplay = file.name;
+            // Update the display text
+            const textInput = b.buttonEl.parentElement?.querySelector("input");
+            if (textInput) {
+              (textInput as HTMLInputElement).value = newDisplay;
+            }
+            if (this.onTemplateChange) {
+              this.onTemplateChange(templatePath);
+            }
+          }).open();
+        });
+      })
+      .addButton((b) => {
+        b.setButtonText("Clear");
+        b.onClick(() => {
+          templatePath = undefined;
+          const textInput = b.buttonEl.parentElement?.querySelector("input");
+          if (textInput) {
+            (textInput as HTMLInputElement).value = "(none)";
+          }
+          if (this.onTemplateChange) {
+            this.onTemplateChange(undefined);
+          }
+        });
+      });
+
     // Folder picker (MVP - simple text input)
     new Setting(contentEl)
       .setName("Folder")
@@ -70,7 +127,12 @@ export class CreateNoteModal extends Modal {
       .addText((t) => {
         t.setPlaceholder("/");
         t.setValue(folder);
-        t.onChange((v) => (folder = normalizePath(v).replace(/^\/+/, "")));
+        t.onChange((v) => {
+          folder = normalizePath(v).replace(/^\/+/, "");
+          if (this.onFolderChange) {
+            this.onFolderChange(folder);
+          }
+        });
       });
 
     // Buttons
@@ -82,7 +144,7 @@ export class CreateNoteModal extends Modal {
           if (!title.trim()) {
             title = "Untitled";
           }
-          this.onSubmit(title, folder);
+          this.onSubmit(title, folder, templatePath);
           this.close();
         });
       })
