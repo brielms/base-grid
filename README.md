@@ -2,7 +2,7 @@
 
 A powerful Matrix view for Obsidian's Bases feature that displays data in interactive 2D grids with advanced bucketing and drag-and-drop functionality.
 
-![Matrix View Demo](demo-screenshot.png)
+![Matrix View Demo](bg-screenshot.png)
 
 ## Features
 
