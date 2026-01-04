@@ -3,6 +3,12 @@ import { VIEW_TYPE_MATRIX, MatrixBasesView } from "./bases/matrixView";
 
 export default class BasesMatrixViewPlugin extends Plugin {
   async onload(): Promise<void> {
+    // Register as a hover link source for hover previews
+    this.registerHoverLinkSource("bases-matrix-view", {
+      display: "Bases Matrix View",
+      defaultMod: false,
+    });
+
     this.registerBasesView(VIEW_TYPE_MATRIX, {
       name: "Matrix",
       icon: "lucide-layout-grid",
@@ -307,6 +313,7 @@ export default class BasesMatrixViewPlugin extends Plugin {
               displayName: "Last create note folder",
               default: "",
               description: "Last folder path used when creating notes in cells",
+              shouldHide: () => true,
             },
             {
               key: "lastCreateNoteTemplatePath",
@@ -314,6 +321,7 @@ export default class BasesMatrixViewPlugin extends Plugin {
               displayName: "Last create note template",
               default: "",
               description: "Last template path used when creating notes in cells",
+              shouldHide: () => true,
             },
           ],
         },

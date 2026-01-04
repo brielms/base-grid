@@ -11,7 +11,7 @@ export interface ParsedFrontmatter {
  * Returns the frontmatter text (if present) and the body.
  */
 export function parseFrontmatter(text: string): ParsedFrontmatter {
-  const frontmatterRegex = /^---\n([\s\S]*?)\n---\n?/;
+  const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
   const match = text.match(frontmatterRegex);
 
   if (match) {

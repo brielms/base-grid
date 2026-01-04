@@ -6,6 +6,7 @@ import {
   TFile,
   Notice,
   Menu,
+  normalizePath,
 } from "obsidian";
 
 import { EMPTY_KEY, applyManualOrder, displayForBucketKey, bucketKeyToWritableValue } from "./valueCodec";
@@ -232,12 +233,16 @@ export class MatrixBasesView extends BasesView {
   private gridEl: HTMLElement;
   private previewEntry: unknown | null = null;
 
+  // Hover preview state
+  private isDragging: boolean = false;
+  private hoverDebounceTimer: number | null = null;
+
   constructor(controller: QueryController, parentEl: HTMLElement) {
     super(controller);
 
     this.rootEl = parentEl.createDiv({ cls: "bases-matrix-root" });
     this.headerEl = this.rootEl.createDiv({ cls: "bases-matrix-header" });
-    this.gridEl = this.rootEl.createDiv({ cls: "bases-matrix-grid" });
+    this.gridEl = this.rootEl.createDiv({ cls: "bases-matrix-grid bmv-root" });
 
     // If your old code built selectors/topbar, build them here and persist to this.config.set(...)
   }
@@ -288,17 +293,43 @@ export class MatrixBasesView extends BasesView {
 
   private ensureViewDefaults(): void {
     const defaults: Record<string, unknown> = {
-      cardFields: "",
+      // Axes
+      rowsMultiMode: "disallow",
+      colsMultiMode: "disallow",
+      includeEmpty: true,
+
+      // Cells
+      cellMode: "cards",
+      maxCardsPerCell: 6,
+      enableDrag: true,
+      showCountChip: true,
+
+      // Sorting
       cellSortBy: "",
       cellSortDir: "asc",
+
+      // Summary
       cellSummaryMode: "count",
       cellSummaryField: "",
+
+      // Cards
+      cardFields: "",
       compactFields: "",
       compactMaxFields: 2,
+      cardThumbMode: "off",
+      cardThumbField: "cover",
+      cardThumbSize: "sm",
+      allowRemoteThumbs: false,
+
+      // Heatmap
       heatmapMode: "off",
       heatmapStrength: 35,
       heatmapScale: "linear",
-      showCountChip: true,
+
+      // Creation
+      createNoteTemplatePath: "",
+      lastCreateNoteFolder: "",
+      lastCreateNoteTemplatePath: "",
     };
 
     for (const [k, def] of Object.entries(defaults)) {
@@ -960,6 +991,14 @@ export class MatrixBasesView extends BasesView {
               }
             }
 
+            // Hover preview functionality
+            card.addEventListener("mouseenter", (evt) => {
+              this.scheduleHoverPreview(evt, e.file.path);
+            });
+            card.addEventListener("mouseleave", () => {
+              this.cancelHoverPreview();
+            });
+
             card.onClickEvent((evt) => {
               evt.stopPropagation();
               void this.app.workspace.getLeaf(false).openFile(e.file);
@@ -968,9 +1007,13 @@ export class MatrixBasesView extends BasesView {
             if (writebackAllowedFinal) {
               card.draggable = true;
               card.addEventListener("dragstart", (ev) => {
+                this.isDragging = true;
                 const payload: DragPayload = { filePath: e.file.path, fromRowKey: rKey, fromColKey: cKey };
                 ev.dataTransfer?.setData("application/json", JSON.stringify(payload));
                 ev.dataTransfer?.setData("text/plain", e.file.path);
+              });
+              card.addEventListener("dragend", () => {
+                this.isDragging = false;
               });
             }
           }
@@ -1096,13 +1139,41 @@ export class MatrixBasesView extends BasesView {
 
     if (!result) return;
 
-    const { title, folder, templatePath } = result;
+    let { title, folder, templatePath } = result;
 
     try {
-      // Create safe filename
-      const safeTitle = title.replace(/[<>:"/\\|?*]/g, "").trim() || "Untitled";
-      const filename = `${safeTitle}.md`;
-      const fullPath = folder ? `${folder}/${filename}` : filename;
+      // Sanitize filename: strip illegal chars, trim trailing dots/spaces, handle reserved names
+      let safeTitle = title
+        .replace(/[<>:"/\\|?*]/g, "") // Strip illegal filename chars
+        .replace(/^\.+|[. ]+$/g, "") // Remove leading dots, trailing dots/spaces
+        .trim();
+
+      // Handle empty title and reserved Windows names
+      const reservedNames = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
+      if (!safeTitle || reservedNames.test(safeTitle)) {
+        safeTitle = "Untitled";
+      }
+
+      // Ensure folder exists
+      if (folder) {
+        const normalizedFolder = normalizePath(folder);
+        const folderExists = this.app.vault.getAbstractFileByPath(normalizedFolder);
+        if (!folderExists) {
+          await this.app.vault.createFolder(normalizedFolder);
+        }
+        folder = normalizedFolder;
+      }
+
+      // Build filename with collision handling
+      let filename = `${safeTitle}.md`;
+      let fullPath = folder ? normalizePath(`${folder}/${filename}`) : filename;
+      let counter = 1;
+
+      while (this.app.vault.getAbstractFileByPath(fullPath)) {
+        counter++;
+        filename = `${safeTitle}-${counter}.md`;
+        fullPath = folder ? normalizePath(`${folder}/${filename}`) : filename;
+      }
 
       let content: string;
 
@@ -1118,20 +1189,25 @@ export class MatrixBasesView extends BasesView {
       }
 
       if (templatePath) {
-        // Load template content
-        const templateFile = this.app.vault.getAbstractFileByPath(templatePath);
-        if (templateFile instanceof TFile) {
-          const templateContent = await this.app.vault.cachedRead(templateFile);
-          const { frontmatterText, body } = parseFrontmatter(templateContent);
+        try {
+          // Load template content
+          const templateFile = this.app.vault.getAbstractFileByPath(templatePath);
+          if (templateFile instanceof TFile) {
+            const templateContent = await this.app.vault.cachedRead(templateFile);
+            const { frontmatterText, body } = parseFrontmatter(templateContent);
 
-          // Merge frontmatter: template first, then injected (injected wins)
-          const mergedFrontmatterText = mergeFrontmatter(frontmatterText, injectedObj);
+            // Merge frontmatter: template first, then injected (injected wins)
+            const mergedFrontmatterText = mergeFrontmatter(frontmatterText, injectedObj);
 
-          // Combine merged frontmatter with template body
-          content = `---\n${mergedFrontmatterText}---\n${body}`;
-        } else {
-          // Template path invalid, fall back to blank note
-          console.warn(`Template file not found: ${templatePath}, creating blank note`);
+            // Combine merged frontmatter with template body
+            content = `---\n${mergedFrontmatterText}---\n${body}`;
+          } else {
+            throw new Error(`Template file not found: ${templatePath}`);
+          }
+        } catch (err) {
+          console.warn(`Failed to load template ${templatePath}, creating blank note:`, err);
+          new Notice(`Template not found, creating blank note: ${templatePath}`);
+          // Fall back to blank note
           const yamlLines = ["---"];
           for (const [key, value] of Object.entries(injectedObj)) {
             yamlLines.push(`${key}: ${JSON.stringify(value)}`);
@@ -1149,8 +1225,15 @@ export class MatrixBasesView extends BasesView {
         content = yamlLines.join("\n") + "\n";
       }
 
-      // Create the file
-      const file = await this.app.vault.create(fullPath, content);
+      // Create the file with error handling
+      let file: TFile;
+      try {
+        file = await this.app.vault.create(fullPath, content);
+      } catch (err) {
+        console.error("Failed to create note file:", err);
+        new Notice(`Failed to create note: ${err.message || "Unknown error"}`);
+        return;
+      }
 
       // Save the last used template path
       this.config.set("lastCreateNoteTemplatePath", templatePath || "");
@@ -1164,5 +1247,39 @@ export class MatrixBasesView extends BasesView {
       console.error("Failed to create note:", err);
       new Notice("Failed to create note (see console)");
     }
+  }
+
+  private scheduleHoverPreview(event: MouseEvent, filePath: string): void {
+    // Cancel any existing timer
+    this.cancelHoverPreview();
+
+    // Debounce for ~200ms
+    this.hoverDebounceTimer = window.setTimeout(() => {
+      this.triggerHoverPreview(event, filePath);
+    }, 200);
+  }
+
+  private cancelHoverPreview(): void {
+    if (this.hoverDebounceTimer) {
+      clearTimeout(this.hoverDebounceTimer);
+      this.hoverDebounceTimer = null;
+    }
+  }
+
+  private triggerHoverPreview(event: MouseEvent, filePath: string): void {
+    // Don't trigger if dragging
+    if (this.isDragging) {
+      return;
+    }
+
+    // Trigger hover preview
+    this.app.workspace.trigger("hover-link", {
+      event,
+      source: "bases-matrix-view",
+      hoverParent: this,
+      targetEl: event.target as HTMLElement,
+      linktext: filePath,
+      sourcePath: filePath,
+    });
   }
 }
