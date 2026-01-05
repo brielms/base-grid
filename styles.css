@@ -4,7 +4,7 @@
 }
 
 /* Parent container handles scrolling */
-.bases-matrix-root {
+.bases-grid-root {
   height: 100%;
   overflow: auto;
 }

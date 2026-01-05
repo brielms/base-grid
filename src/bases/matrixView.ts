@@ -14,7 +14,7 @@ import { bucketScalarValue, computeQuantileBuckets, quantileLabelFor, defaultOrd
 import { isMultiValue, type MultiValueMode } from "./multiValue";
 import { parseCommaList, asNoteProp } from "./cardConfig";
 import type { CellMode, DragPayload } from "./matrixTypes";
-import { MatrixDrilldownModal } from "../ui/drilldownModal";
+import { GridDrilldownModal } from "../ui/drilldownModal";
 import { TextPromptModal } from "../ui/textPromptModal";
 import { CreateNoteModal } from "../ui/createNoteModal";
 import { getAxisState, setAlias, setOrder, setBucketSpec } from "./axisState";
@@ -25,7 +25,7 @@ import type { AxisBucketSpec } from "./bucketSpec";
 import { isReversibleSpec } from "./bucketSpec";
 import { resolveThumbForEntry } from "./thumbResolver";
 
-export const VIEW_TYPE_MATRIX = "bases-matrix-view.matrix";
+export const VIEW_TYPE_GRID = "bases-grid-view.grid";
 
 type CellKey = `${string}||${string}`;
 
@@ -225,8 +225,8 @@ function computeCellSummary(entries: unknown[], summaryMode: string, summaryFiel
   };
 }
 
-export class MatrixBasesView extends BasesView {
-  readonly type = VIEW_TYPE_MATRIX;
+export class GridBasesView extends BasesView {
+  readonly type = VIEW_TYPE_GRID;
 
   private rootEl: HTMLElement;
   private headerEl: HTMLElement;
@@ -240,9 +240,9 @@ export class MatrixBasesView extends BasesView {
   constructor(controller: QueryController, parentEl: HTMLElement) {
     super(controller);
 
-    this.rootEl = parentEl.createDiv({ cls: "bases-matrix-root" });
-    this.headerEl = this.rootEl.createDiv({ cls: "bases-matrix-header" });
-    this.gridEl = this.rootEl.createDiv({ cls: "bases-matrix-grid bmv-root" });
+    this.rootEl = parentEl.createDiv({ cls: "bases-grid-root" });
+    this.headerEl = this.rootEl.createDiv({ cls: "bases-grid-header" });
+    this.gridEl = this.rootEl.createDiv({ cls: "bases-grid-grid bmv-root" });
 
     // If your old code built selectors/topbar, build them here and persist to this.config.set(...)
   }
@@ -303,6 +303,7 @@ export class MatrixBasesView extends BasesView {
       maxCardsPerCell: 6,
       enableDrag: true,
       showCountChip: true,
+      enableHoverPreview: true,
 
       // Sorting
       cellSortBy: "",
@@ -384,8 +385,8 @@ export class MatrixBasesView extends BasesView {
     if (!rowsProp || !colsProp) {
       this.gridEl.empty();
       this.gridEl.createDiv({
-        cls: "bases-matrix-empty",
-        text: "Pick row + column properties to render the matrix.",
+        cls: "bases-grid-empty",
+        text: "Pick row + column properties to render the grid.",
       });
       return;
     }
@@ -441,16 +442,16 @@ export class MatrixBasesView extends BasesView {
     console.debug(`  Result: writebackAllowed=${writebackAllowed}`);
     console.debug(`  Full specs:`, { rowSpec, colSpec });
 
-    // Now call your existing matrix builder/render path:
+    // Now call your existing grid builder/render path:
     // - bucket rows/cols
     // - build cells
     // - render headers + stacks
     // - wire click -> drilldown modal
     // - wire drag (only if writebackAllowed AND bucket reversible)
-    await this.renderMatrix(entries, rowsProp, colsProp, writebackAllowed, rowSpec, colSpec, now, rowsState, colsState, rowsMultiMode, colsMultiMode, diag, rowQuantEdges, colQuantEdges, rowReversible, colReversible);
+    await this.renderGrid(entries, rowsProp, colsProp, writebackAllowed, rowSpec, colSpec, now, rowsState, colsState, rowsMultiMode, colsMultiMode, diag, rowQuantEdges, colQuantEdges, rowReversible, colReversible);
   }
 
-  private async renderMatrix(
+  private async renderGrid(
     entries: unknown[],
     rowsProp: BasesPropertyId,
     colsProp: BasesPropertyId,
@@ -842,7 +843,7 @@ export class MatrixBasesView extends BasesView {
           // Set contextual preview entry for template editors
           this.previewEntry = cellEntries.length > 0 ? cellEntries[0] : null;
 
-          new MatrixDrilldownModal(this.app, {
+          new GridDrilldownModal(this.app, {
             rowLabel: rowLabel(rKey),
             colLabel: colLabel(cKey),
             entries: cellEntries,
@@ -1001,7 +1002,25 @@ export class MatrixBasesView extends BasesView {
 
             card.onClickEvent((evt) => {
               evt.stopPropagation();
-              void this.app.workspace.getLeaf(false).openFile(e.file);
+              try {
+                // Validate that we have a valid file
+                if (!e.file || !(e.file instanceof TFile)) {
+                  console.warn("[Grid] Invalid file object:", e.file);
+                  return;
+                }
+
+                // Check if file exists in vault
+                const existingFile = this.app.vault.getAbstractFileByPath(e.file.path);
+                if (!existingFile || !(existingFile instanceof TFile)) {
+                  console.warn("[Grid] File not found in vault:", e.file.path);
+                  return;
+                }
+
+                console.log("[Grid] Opening file:", e.file.path);
+                void this.app.workspace.getLeaf(false).openFile(e.file);
+              } catch (error) {
+                console.error("[Grid] Failed to open file:", e.file?.path || "unknown", error);
+              }
             });
 
             if (writebackAllowedFinal) {
@@ -1157,11 +1176,16 @@ export class MatrixBasesView extends BasesView {
       // Ensure folder exists
       if (folder) {
         const normalizedFolder = normalizePath(folder);
-        const folderExists = this.app.vault.getAbstractFileByPath(normalizedFolder);
-        if (!folderExists) {
-          await this.app.vault.createFolder(normalizedFolder);
+        try {
+          const folderExists = this.app.vault.getAbstractFileByPath(normalizedFolder);
+          if (!folderExists) {
+            await this.app.vault.createFolder(normalizedFolder);
+          }
+          folder = normalizedFolder;
+        } catch (error) {
+          console.error("[Grid] Failed to create/access folder:", normalizedFolder, error);
+          throw error;
         }
-        folder = normalizedFolder;
       }
 
       // Build filename with collision handling
@@ -1272,14 +1296,31 @@ export class MatrixBasesView extends BasesView {
       return;
     }
 
-    // Trigger hover preview
-    this.app.workspace.trigger("hover-link", {
-      event,
-      source: "bases-matrix-view",
-      hoverParent: this,
-      targetEl: event.target as HTMLElement,
-      linktext: filePath,
-      sourcePath: filePath,
-    });
+    // Check if hover preview is enabled
+    const enableHoverPreview = this.config.get("enableHoverPreview") !== false;
+    if (!enableHoverPreview) {
+      return;
+    }
+
+    // Validate file exists before triggering hover
+    const file = this.app.vault.getAbstractFileByPath(filePath);
+    if (!file || !(file instanceof TFile)) {
+      console.debug("Hover preview: file not found:", filePath);
+      return;
+    }
+
+    try {
+      // Trigger hover preview
+      this.app.workspace.trigger("hover-link", {
+        event,
+        source: "bases-grid-view",
+        hoverParent: this,
+        targetEl: event.target as HTMLElement,
+        linktext: filePath,
+        sourcePath: filePath,
+      });
+    } catch (error) {
+      console.warn("Hover preview failed for", filePath, ":", error);
+    }
   }
 }

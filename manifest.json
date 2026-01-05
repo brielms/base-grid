@@ -1,9 +1,10 @@
 {
-	"id": "bases-matrix-view",
-	"name": "Bases Matrix View",
+	"id": "bases-grid-view",
+	"name": "Bases Grid View",
 	"version": "0.0.3",
 	"minAppVersion": "1.10.0",
 	"description": "A Matrix view for Bases that displays data in a 2D grid with drag-and-drop functionality.",
 	"author": "Obsidian Community",
+	"fundingUrl": "https://buymeacoffee.com/brielms",
 	"isDesktopOnly": false
 }

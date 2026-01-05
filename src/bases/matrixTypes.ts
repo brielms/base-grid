@@ -1,6 +1,6 @@
 export type CellMode = "cards" | "compact" | "count";
 
-export type MatrixBucketKey = string; // stable string key for a bucket
+export type GridBucketKey = string; // stable string key for a bucket
 
 export type DragPayload = {
   filePath: string;

@@ -30,7 +30,10 @@ export function bucketScalarValue(
   spec: AxisBucketSpec,
   now: Date
 ): { bucketKey: string; reversibleValue?: string } {
-  if (v === null) return { bucketKey: EMPTY_KEY };
+  // Handle null values and special "missing" objects (like {icon: 'lucide-file-question'})
+  if (v === null || (typeof v === 'object' && v !== null && 'icon' in v && v.icon === 'lucide-file-question')) {
+    return { bucketKey: EMPTY_KEY };
+  }
 
   if (spec.type === "categorical") {
     const k = valueToBucketKey(v);

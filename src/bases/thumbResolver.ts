@@ -51,6 +51,7 @@ export async function resolveThumbForEntry(
       const resolvedUrl = await resolveImageValue(app, entryFile, url, allowRemote);
       return resolvedUrl;
     } catch (err) {
+      console.warn("[ThumbResolver] Failed to read file:", entryFile.path, err);
       return { reason: `Failed to read file: ${err}` };
     }
   }

@@ -89,7 +89,7 @@ function notePropName(propId: BasesPropertyId): string {
   return idx >= 0 ? propId.slice(idx + 1) : propId;
 }
 
-export class MatrixDrilldownModal extends Modal {
+export class GridDrilldownModal extends Modal {
   private readonly args: DrilldownArgs;
 
   constructor(app: App, args: DrilldownArgs) {

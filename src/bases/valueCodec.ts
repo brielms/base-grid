@@ -101,7 +101,7 @@ export function applyManualOrder(keys: string[], order?: string[]): string[] {
 
 /**
  * Determines if a bucket key can be mapped back to a writable value for frontmatter.
- * Used when creating new notes in matrix cells to set appropriate properties.
+ * Used when creating new notes in grid cells to set appropriate properties.
  */
 export function bucketKeyToWritableValue(
   spec: AxisBucketSpec,

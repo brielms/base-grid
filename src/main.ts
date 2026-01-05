@@ -1,19 +1,28 @@
-import { Plugin } from "obsidian";
-import { VIEW_TYPE_MATRIX, MatrixBasesView } from "./bases/matrixView";
+import { Plugin, addIcon } from "obsidian";
+import { VIEW_TYPE_GRID, GridBasesView } from "./bases/matrixView";
 
-export default class BasesMatrixViewPlugin extends Plugin {
+export default class BasesGridViewPlugin extends Plugin {
   async onload(): Promise<void> {
+    // Register custom 3x3 grid icon
+    try {
+      const gridIconSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="6" height="6"/><rect x="9" y="2" width="6" height="6"/><rect x="16" y="2" width="6" height="6"/><rect x="2" y="9" width="6" height="6"/><rect x="9" y="9" width="6" height="6"/><rect x="16" y="9" width="6" height="6"/><rect x="2" y="16" width="6" height="6"/><rect x="9" y="16" width="6" height="6"/><rect x="16" y="16" width="6" height="6"/></svg>`;
+      addIcon("grid-3x3", gridIconSvg);
+      console.log("[Grid Plugin] Custom icon registered successfully");
+    } catch (error) {
+      console.error("[Grid Plugin] Failed to register custom icon:", error);
+    }
+
     // Register as a hover link source for hover previews
-    this.registerHoverLinkSource("bases-matrix-view", {
-      display: "Bases Matrix View",
+    this.registerHoverLinkSource("bases-grid-view", {
+      display: "Bases Grid View",
       defaultMod: false,
     });
 
-    this.registerBasesView(VIEW_TYPE_MATRIX, {
-      name: "Matrix",
-      icon: "lucide-layout-grid",
+    this.registerBasesView(VIEW_TYPE_GRID, {
+      name: "Grid",
+      icon: "grid-3x3",
       factory: (controller, containerEl) => {
-        return new MatrixBasesView(controller, containerEl);
+        return new GridBasesView(controller, containerEl);
       },
 
       options: (() => [
@@ -104,6 +113,13 @@ export default class BasesMatrixViewPlugin extends Plugin {
               displayName: "Show count chip",
               default: true,
             },
+            {
+              key: "enableHoverPreview",
+              type: "toggle",
+              displayName: "Enable hover preview",
+              default: true,
+              description: "Show note preview when hovering over cards",
+            },
           ],
         },
         // C) Sorting
@@ -173,7 +189,7 @@ export default class BasesMatrixViewPlugin extends Plugin {
               displayName: "Card fields (comma-separated)",
               default: "",
               placeholder: "status,priority,due",
-              description: "Frontmatter fields shown on cards (without note.). Use the 'Card fields' button in the Matrix view axis bar for easier selection.",
+              description: "Frontmatter fields shown on cards (without note.). Use the 'Card fields' button in the Grid view axis bar for easier selection.",
             },
             // Compact options - conditionally shown
             {
@@ -230,7 +246,7 @@ export default class BasesMatrixViewPlugin extends Plugin {
                   displayName: "Thumbnail field",
                   default: "cover",
                   placeholder: "cover",
-                  description: "Frontmatter field containing the image path (only used when mode is 'Frontmatter field'). Use the 'Thumbnail field' button in the Matrix view axis bar for easier selection.",
+                  description: "Frontmatter field containing the image path (only used when mode is 'Frontmatter field'). Use the 'Thumbnail field' button in the Grid view axis bar for easier selection.",
                 },
                 {
                   key: "cardThumbSize",
